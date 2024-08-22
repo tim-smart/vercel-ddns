@@ -1,0 +1,24 @@
+{
+  "name": "vercel-ddns",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "",
+  "scripts": {
+    "dev": "tsx --env-file=.env src/main.ts",
+    "build": "tsup"
+  },
+  "keywords": [],
+  "author": "Tim Smart <hello@timsmart.co>",
+  "license": "MIT",
+  "packageManager": "pnpm@9.7.0",
+  "devDependencies": {
+    "@effect/platform": "^0.62.2",
+    "@effect/platform-node": "^0.57.2",
+    "@effect/schema": "^0.71.1",
+    "effect": "^3.6.5",
+    "prettier": "^3.3.3",
+    "tsup": "^8.2.4",
+    "tsx": "^4.17.0",
+    "typescript": "^5.5.4"
+  }
+}
