@@ -8,7 +8,6 @@ const program = Effect.gen(function* () {
   const ipify = yield* Ipify
   const domain = yield* Config.string("DDNS_DOMAIN")
   const subdomains = yield* Config.string("DDNS_SUBDOMAIN").pipe(Config.array)
-  console.log(subdomains)
   const ipAddress = yield* ipify.getCurrentIp
 
   yield* Effect.forEach(
@@ -26,10 +25,12 @@ const program = Effect.gen(function* () {
       ),
     { concurrency: 5 },
   )
-})
+}).pipe(Effect.tapErrorCause(Effect.logFatal))
 
 const EnvLive = Layer.mergeAll(Vercel.Live, Ipify.Live).pipe(
   Layer.provideMerge(Logger.pretty),
 )
 
-program.pipe(Effect.provide(EnvLive), NodeRuntime.runMain)
+NodeRuntime.runMain(program.pipe(Effect.provide(EnvLive)), {
+  disableErrorReporting: true,
+})
