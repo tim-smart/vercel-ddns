@@ -12,13 +12,13 @@
   "license": "MIT",
   "packageManager": "pnpm@9.7.0",
   "devDependencies": {
-    "@effect/platform": "^0.62.2",
-    "@effect/platform-node": "^0.57.2",
-    "@effect/schema": "^0.71.1",
-    "effect": "^3.6.5",
+    "@effect/platform": "^0.66.1",
+    "@effect/platform-node": "^0.61.1",
+    "@effect/schema": "^0.74.0",
+    "effect": "^3.8.3",
     "prettier": "^3.3.3",
-    "tsup": "^8.2.4",
-    "tsx": "^4.17.0",
-    "typescript": "^5.5.4"
+    "tsup": "^8.3.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
   }
 }

@@ -1,4 +1,4 @@
-import { Context, Effect, flow, Layer, Schedule } from "effect"
+import { Context, Effect, flow, Layer, pipe, Schedule } from "effect"
 import {
   HttpClient,
   HttpClientRequest,
@@ -26,10 +26,10 @@ const make = Effect.gen(function* () {
     ),
   )
 
-  const getCurrentIp = HttpClientRequest.get("/").pipe(
-    HttpClientRequest.setUrlParams({ format: "json" }),
-    client,
-    HttpClientResponse.schemaBodyJsonScoped(IpResponse),
+  const getCurrentIp = pipe(
+    client.get("/", { urlParams: { format: "json" } }),
+    Effect.flatMap(HttpClientResponse.schemaBodyJson(IpResponse)),
+    Effect.scoped,
     Effect.orDie,
   )
 

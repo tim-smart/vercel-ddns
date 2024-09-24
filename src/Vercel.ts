@@ -5,6 +5,7 @@ import {
   flow,
   Layer,
   Option,
+  pipe,
   Redacted,
   Schedule,
   Stream,
@@ -44,13 +45,15 @@ const make = Effect.gen(function* () {
     readonly domain: string
     readonly since?: number
   }) =>
-    HttpClientRequest.get(`/v4/domains/${options.domain}/records`).pipe(
-      HttpClientRequest.setUrlParams({
-        limit: 50,
-        since: options.since,
+    pipe(
+      client.get(`/v4/domains/${options.domain}/records`, {
+        urlParams: {
+          limit: 50,
+          since: options.since,
+        },
       }),
-      client,
-      HttpClientResponse.schemaBodyJsonScoped(RecordsPage),
+      Effect.flatMap(HttpClientResponse.schemaBodyJson(RecordsPage)),
+      Effect.scoped,
     )
 
   const listDnsRecords = (options: { readonly domain: string }) =>
@@ -71,9 +74,10 @@ const make = Effect.gen(function* () {
     readonly value: string
   }) =>
     HttpClientRequest.post(`/v2/domains/${record.domain}/records`).pipe(
-      HttpClientRequest.unsafeJsonBody(Struct.omit(record, "domain")),
-      client,
-      HttpClientResponse.void,
+      HttpClientRequest.bodyUnsafeJson(Struct.omit(record, "domain")),
+      client.execute,
+      Effect.asVoid,
+      Effect.scoped,
     )
 
   const updateRecord = (update: {
@@ -81,9 +85,10 @@ const make = Effect.gen(function* () {
     readonly value: string
   }) =>
     HttpClientRequest.patch(`/v1/domains/records/${update.id}`).pipe(
-      HttpClientRequest.unsafeJsonBody(Struct.omit(update, "id")),
-      client,
-      HttpClientResponse.void,
+      HttpClientRequest.bodyUnsafeJson(Struct.omit(update, "id")),
+      client.execute,
+      Effect.asVoid,
+      Effect.scoped,
     )
 
   const upsertRecord = (options: {

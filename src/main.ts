@@ -1,13 +1,14 @@
-import { Config, Effect, Layer, Logger } from "effect"
+import { Config, Effect, Layer } from "effect"
 import { Vercel } from "./Vercel.js"
 import { Ipify } from "./Ipify.js"
 import { NodeRuntime } from "@effect/platform-node"
+import { configProviderNested } from "./Utils.js"
 
 const program = Effect.gen(function* () {
   const vercel = yield* Vercel
   const ipify = yield* Ipify
-  const domain = yield* Config.string("DDNS_DOMAIN")
-  const subdomains = yield* Config.string("DDNS_SUBDOMAIN").pipe(Config.array)
+  const domain = yield* Config.string("domain")
+  const subdomains = yield* Config.string("subdomain").pipe(Config.array)
   const ipAddress = yield* ipify.getCurrentIp
 
   yield* Effect.forEach(
@@ -25,11 +26,12 @@ const program = Effect.gen(function* () {
       ),
     { concurrency: 5 },
   )
-}).pipe(Effect.tapErrorCause(Effect.logFatal))
-
-const EnvLive = Layer.mergeAll(Vercel.Live, Ipify.Live).pipe(
-  Layer.provideMerge(Logger.pretty),
+}).pipe(
+  Effect.withConfigProvider(configProviderNested("ddns")),
+  Effect.tapErrorCause(Effect.logFatal),
 )
+
+const EnvLive = Layer.mergeAll(Vercel.Live, Ipify.Live)
 
 NodeRuntime.runMain(program.pipe(Effect.provide(EnvLive)), {
   disableErrorReporting: true,
