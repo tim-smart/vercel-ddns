@@ -31,8 +31,9 @@ const program = Effect.gen(function* () {
   Effect.tapErrorCause(Effect.logFatal),
 )
 
-const EnvLive = Layer.mergeAll(Vercel.Live, Ipify.Live)
-
-NodeRuntime.runMain(program.pipe(Effect.provide(EnvLive)), {
-  disableErrorReporting: true,
-})
+NodeRuntime.runMain(
+  program.pipe(Effect.provide([Vercel.Default, Ipify.Default])),
+  {
+    disableErrorReporting: true,
+  },
+)

@@ -1,13 +1,13 @@
 import {
   Config,
-  Context,
   Effect,
   flow,
-  Layer,
+  identity,
   Option,
   pipe,
   Redacted,
   Schedule,
+  Schema,
   Stream,
   Struct,
 } from "effect"
@@ -18,120 +18,115 @@ import {
 } from "@effect/platform"
 import { NodeHttpClient } from "@effect/platform-node"
 import { configProviderNested } from "./Utils.js"
-import * as Schema from "@effect/schema/Schema"
 
-const make = Effect.gen(function* () {
-  const token = yield* Config.redacted("token")
-  const client = (yield* HttpClient.HttpClient).pipe(
-    HttpClient.mapRequest(
-      flow(
-        HttpClientRequest.bearerToken(Redacted.value(token)),
-        HttpClientRequest.prependUrl("https://api.vercel.com"),
-        HttpClientRequest.acceptJson,
-      ),
-    ),
-    HttpClient.filterStatusOk,
-    HttpClient.transformResponse(
-      Effect.retry({
-        while: (err) =>
-          err._tag === "ResponseError" && err.response.status >= 429,
-        times: 5,
-        schedule: Schedule.exponential(100),
-      }),
-    ),
-  )
+export class Vercel extends Effect.Service<Vercel>()("Vercel", {
+  dependencies: [NodeHttpClient.layerUndici],
+  effect: Effect.gen(function* () {
+    const token = yield* Config.redacted("token")
+    const teamId = yield* Config.option(Config.string("teamId"))
 
-  const listDnsRecordsPage = (options: {
-    readonly domain: string
-    readonly since?: number
-  }) =>
-    pipe(
-      client.get(`/v4/domains/${options.domain}/records`, {
-        urlParams: {
-          limit: 50,
-          since: options.since,
-        },
-      }),
-      Effect.flatMap(HttpClientResponse.schemaBodyJson(RecordsPage)),
-      Effect.scoped,
-    )
-
-  const listDnsRecords = (options: { readonly domain: string }) =>
-    Stream.paginateChunkEffect(undefined as undefined | number, (since) =>
-      listDnsRecordsPage({
-        domain: options.domain,
-        since,
-      }).pipe(
-        Effect.orDie,
-        Effect.map((page) => [page.records, page.pagination.next]),
-      ),
-    )
-
-  const createRecord = (record: {
-    readonly domain: string
-    readonly name: string
-    readonly type: string
-    readonly value: string
-  }) =>
-    HttpClientRequest.post(`/v2/domains/${record.domain}/records`).pipe(
-      HttpClientRequest.bodyUnsafeJson(Struct.omit(record, "domain")),
-      client.execute,
-      Effect.asVoid,
-      Effect.scoped,
-    )
-
-  const updateRecord = (update: {
-    readonly id: string
-    readonly value: string
-  }) =>
-    HttpClientRequest.patch(`/v1/domains/records/${update.id}`).pipe(
-      HttpClientRequest.bodyUnsafeJson(Struct.omit(update, "id")),
-      client.execute,
-      Effect.asVoid,
-      Effect.scoped,
-    )
-
-  const upsertRecord = (options: {
-    readonly domain: string
-    readonly subdomain: string
-    readonly type: string
-    readonly value: string
-  }) =>
-    Effect.gen(function* () {
-      const existing = yield* listDnsRecords({ domain: options.domain }).pipe(
-        Stream.filter(
-          (record) =>
-            record.type === options.type && record.name === options.subdomain,
+    const client = (yield* HttpClient.HttpClient).pipe(
+      HttpClient.mapRequest(
+        flow(
+          HttpClientRequest.bearerToken(Redacted.value(token)),
+          HttpClientRequest.prependUrl("https://api.vercel.com"),
+          HttpClientRequest.acceptJson,
+          Option.isSome(teamId)
+            ? HttpClientRequest.setUrlParam("teamId", teamId.value)
+            : identity,
         ),
-        Stream.runHead,
+      ),
+      HttpClient.filterStatusOk,
+      HttpClient.transformResponse(
+        Effect.retry({
+          while: (err) =>
+            err._tag === "ResponseError" && err.response.status >= 429,
+          times: 5,
+          schedule: Schedule.exponential(100),
+        }),
+      ),
+    )
+
+    const listDnsRecordsPage = (options: {
+      readonly domain: string
+      readonly since?: number
+    }) =>
+      pipe(
+        client.get(`/v4/domains/${options.domain}/records`, {
+          urlParams: {
+            limit: 50,
+            since: options.since,
+          },
+        }),
+        Effect.flatMap(HttpClientResponse.schemaBodyJson(RecordsPage)),
       )
-      if (Option.isSome(existing)) {
-        const record = existing.value
-        if (record.value === options.value) {
-          return
-        }
-        yield* updateRecord({ id: record.id, value: options.value })
-      } else {
-        yield* createRecord({
+
+    const listDnsRecords = (options: { readonly domain: string }) =>
+      Stream.paginateChunkEffect(undefined as undefined | number, (since) =>
+        listDnsRecordsPage({
           domain: options.domain,
-          name: options.subdomain,
-          type: options.type,
-          value: options.value,
-        })
-      }
-    })
+          since,
+        }).pipe(
+          Effect.orDie,
+          Effect.map((page) => [page.records, page.pagination.next]),
+        ),
+      )
 
-  return { listDnsRecords, createRecord, updateRecord, upsertRecord } as const
-}).pipe(Effect.withConfigProvider(configProviderNested("vercel")))
+    const createRecord = (record: {
+      readonly domain: string
+      readonly name: string
+      readonly type: string
+      readonly value: string
+    }) =>
+      HttpClientRequest.post(`/v2/domains/${record.domain}/records`).pipe(
+        HttpClientRequest.bodyUnsafeJson(Struct.omit(record, "domain")),
+        client.execute,
+        Effect.asVoid,
+      )
 
-export class Vercel extends Context.Tag("Vercel")<
-  Vercel,
-  Effect.Effect.Success<typeof make>
->() {
-  static Live = Layer.effect(Vercel, make).pipe(
-    Layer.provide(NodeHttpClient.layerUndici),
-  )
-}
+    const updateRecord = (update: {
+      readonly id: string
+      readonly value: string
+    }) =>
+      HttpClientRequest.patch(`/v1/domains/records/${update.id}`).pipe(
+        HttpClientRequest.bodyUnsafeJson(Struct.omit(update, "id")),
+        client.execute,
+        Effect.asVoid,
+      )
+
+    const upsertRecord = (options: {
+      readonly domain: string
+      readonly subdomain: string
+      readonly type: string
+      readonly value: string
+    }) =>
+      Effect.gen(function* () {
+        const existing = yield* listDnsRecords({ domain: options.domain }).pipe(
+          Stream.filter(
+            (record) =>
+              record.type === options.type && record.name === options.subdomain,
+          ),
+          Stream.runHead,
+        )
+        if (Option.isSome(existing)) {
+          const record = existing.value
+          if (record.value === options.value) {
+            return
+          }
+          yield* updateRecord({ id: record.id, value: options.value })
+        } else {
+          yield* createRecord({
+            domain: options.domain,
+            name: options.subdomain,
+            type: options.type,
+            value: options.value,
+          })
+        }
+      })
+
+    return { listDnsRecords, createRecord, updateRecord, upsertRecord } as const
+  }).pipe(Effect.withConfigProvider(configProviderNested("vercel"))),
+}) {}
 
 export class Record extends Schema.Class<Record>("Record")({
   id: Schema.String,
